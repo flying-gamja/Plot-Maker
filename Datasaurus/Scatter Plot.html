@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Scatter Plot</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@700&display=swap">
+<style>
+:root{--bg:#f5f6f4;--ink:#1b2320;--mute:#5d6b66;--pt:#0055FF;--err:#c0341d;
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);color-scheme:light}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#121715;--ink:#e8eeea;--mute:#98a8a1;--err:#ff7a63;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#121715;--ink:#e8eeea;--mute:#98a8a1;--err:#ff7a63;color-scheme:dark}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:700 16px/1.55 "JetBrains Mono",ui-monospace,Menlo,Consolas,"Apple SD Gothic Neo","Noto Sans KR","Malgun Gothic",monospace}
+main{max-width:1100px;margin:0 auto;padding:28px 20px 48px}
+h1{font-size:clamp(1.6rem,4vw,2.3rem);line-height:1.2;margin:0 0 6px;letter-spacing:-.02em}
+.ds{color:var(--pt);font-size:1.5rem;margin:0 0 22px;min-height:1.6em;overflow-wrap:anywhere}
+.sheet{margin:0 0 16px;background:#fff;border:1px solid #c9ccd4;border-radius:10px;overflow:hidden;color:#1c1f26}
+.sinfo{padding:8px 12px;background:#e9eaee;font-size:.85rem;border-bottom:1px solid #c9ccd4;overflow-wrap:anywhere}
+.swrap{max-height:220px;overflow:auto}
+table{border-collapse:collapse;width:100%;min-width:560px;font-size:.9rem;font-variant-numeric:tabular-nums}
+th,td{border:1px solid #dcdfe5;padding:4px 10px;text-align:right;height:30px;white-space:nowrap}
+th{position:sticky;top:0;background:#f1f2f5;z-index:1}
+th:first-child,td:first-child{text-align:center;background:#f1f2f5;color:#6b7280;width:56px}
+td.cs{background:#eef3ff}
+.vb{font:inherit;font-size:.7rem;padding:1px 6px;margin-left:4px;border:1px solid #9aa0ad;border-radius:5px;background:#fff;color:#1c1f26;cursor:pointer}
+.vb[aria-pressed=true]{background:#0055FF;color:#fff;border-color:#0055FF}
+.stage{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(0,1fr);gap:20px;align-items:center;background:#e9eaee;border-radius:10px;padding:16px;color:#1c1f26}
+.stage.drag{outline:3px dashed var(--pt);outline-offset:-6px}
+#big{width:100%;height:auto;display:block}
+.stats{font:700 clamp(1.05rem,2.6vw,1.6rem)/1.7 "JetBrains Mono",ui-monospace,Menlo,Consolas,monospace;white-space:pre}
+.stats .f{color:#b9bcc4}.stats .lb{display:inline-block;width:6.5ch}
+.ctl{margin-top:16px}
+.ctl button+button,.ctl input+button{margin-left:8px}
+button:disabled{opacity:.5;cursor:default}
+#reg[aria-pressed=true]{background:#FFD700;border-color:#b89b00}
+.eq{font-size:clamp(.95rem,2.2vw,1.3rem);margin-top:8px;min-height:1.6em;white-space:normal;overflow-wrap:anywhere}
+.eq .sw{display:inline-block;width:1.6em;height:.35em;background:#FFD700;border:1px solid #b89b00;border-radius:3px;vertical-align:middle;margin-right:.6em}
+button{font:inherit;font-size:.95rem;cursor:pointer;border:1px solid #9aa0ad;background:#fff;color:#1c1f26;border-radius:8px;padding:8px 16px}
+button:focus-visible{outline:3px solid var(--pt);outline-offset:2px}
+#msg{margin:12px 0 0;font-size:.9rem;min-height:1.5em;color:var(--mute);white-space:normal}
+#msg.err{color:var(--err)}
+@media (max-width:760px){.stage{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<main>
+<h1>Scatter Plot</h1>
+<p class="ds" id="name">파일을 불러오세요</p>
+<section class="sheet" aria-label="데이터 표"><div class="sinfo" id="sinfo"></div><div class="swrap"><table id="tbl"></table></div></section>
+<section class="stage" id="stage">
+  <svg id="big" viewBox="0 0 600 500" role="img" aria-label="산점도"></svg>
+  <div>
+    <div class="stats" id="st"></div>
+    <div class="eq" id="eq"></div>
+    <div class="ctl"><button id="open">파일 불러오기</button><input type="file" id="file" accept=".txt,text/plain" hidden><button id="reg" aria-pressed="false" disabled>회귀선 그리기</button></div>
+  </div>
+</section>
+<p id="msg" role="status">.txt 파일을 선택하거나 이 영역에 끌어다 놓으세요. 첫 줄이 변수명이면 그대로 쓰고, 열은 최대 5개까지 읽습니다. 표의 변수명 옆 X/Y 버튼으로 축을 고르세요.</p>
+</main>
+<script>
+const NS='http://www.w3.org/2000/svg',svg=document.getElementById('big');
+const el=(t,a,p)=>{const e=document.createElementNS(NS,t);for(const k in a)e.setAttribute(k,a[k]);if(p)p.appendChild(e);return e};
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const L=56,T=16,W=528,H=430,labels=['X Mean','Y Mean','X SD','Y SD','Corr.'],MAXC=5,MAXR=1000;
+let S=null,reg=false;
+function axis(min,max){
+ if(min===max){min-=1;max+=1}
+ const raw=(max-min)/5,mag=10**Math.floor(Math.log10(raw)),n=raw/mag;
+ const step=(n<1.5?1:n<3?2:n<7?5:10)*mag;
+ const lo=Math.floor(min/step)*step,hi=Math.ceil(max/step)*step,ticks=[];
+ for(let v=lo;v<=hi+step/2;v+=step)ticks.push(v);
+ return{lo,hi,ticks,dg:Math.max(0,-Math.floor(Math.log10(step)))}
+}
+function plot(pts,xl='x',yl='y',line=null){
+ svg.innerHTML='';
+ const xs=pts?pts.map(p=>p[0]):[0,10],ys=pts?pts.map(p=>p[1]):[0,10];
+ const ax=axis(Math.min(...xs),Math.max(...xs)),ay=axis(Math.min(...ys),Math.max(...ys));
+ const px=v=>L+(v-ax.lo)/(ax.hi-ax.lo)*W,py=v=>T+H-(v-ay.lo)/(ay.hi-ay.lo)*H;
+ ax.ticks.forEach(v=>{
+  el('line',{x1:px(v),x2:px(v),y1:T,y2:T+H,stroke:'#fff','stroke-width':1.5},svg);
+  el('text',{x:px(v),y:T+H+20,'text-anchor':'middle','font-size':12,fill:'#555b66'},svg).textContent=v.toFixed(ax.dg);
+ });
+ ay.ticks.forEach(v=>{
+  el('line',{x1:L,x2:L+W,y1:py(v),y2:py(v),stroke:'#fff','stroke-width':1.5},svg);
+  el('text',{x:L-8,y:py(v)+4,'text-anchor':'end','font-size':12,fill:'#555b66'},svg).textContent=v.toFixed(ay.dg);
+ });
+ el('text',{x:L+W/2,y:T+H+42,'text-anchor':'middle','font-size':13,fill:'#1c1f26'},svg).textContent=xl;
+ el('text',{x:14,y:T+H/2,'text-anchor':'middle','font-size':13,fill:'#1c1f26',transform:`rotate(-90 14 ${T+H/2})`},svg).textContent=yl;
+ if(!pts)return;
+ const r=pts.length>1000?2:pts.length>300?3:4.5;
+ for(const [x,y] of pts)el('circle',{cx:px(x),cy:py(y),r,fill:'#0055FF','fill-opacity':.8},svg);
+ if(line){
+  const cp=el('clipPath',{id:'cp'},svg);el('rect',{x:L,y:T,width:W,height:H},cp);
+  const a=px(line.x0),b=py(line.a*line.x0+line.b),c=px(line.x1),d=py(line.a*line.x1+line.b);
+  el('line',{x1:a,y1:b,x2:c,y2:d,stroke:'#1c1f26','stroke-opacity':.35,'stroke-width':5.5,'stroke-linecap':'round','clip-path':'url(#cp)'},svg);
+  el('line',{x1:a,y1:b,x2:c,y2:d,stroke:'#FFD700','stroke-width':3,'stroke-linecap':'round','clip-path':'url(#cp)'},svg);
+ }
+}
+function stats(p){
+ const n=p.length,mx=p.reduce((s,q)=>s+q[0],0)/n,my=p.reduce((s,q)=>s+q[1],0)/n;
+ let a=0,b=0,c=0;for(const q of p){a+=(q[0]-mx)**2;b+=(q[1]-my)**2;c+=(q[0]-mx)*(q[1]-my)}
+ return[mx,my,Math.sqrt(a/(n-1)),Math.sqrt(b/(n-1)),c/Math.sqrt(a*b)];
+}
+function showStats(v){
+ document.getElementById('st').innerHTML=labels.map((l,i)=>{
+  if(!v||!isFinite(v[i]))return `<span class="lb">${l}</span>: --`;
+  const s=v[i].toFixed(8),k=s.length-6;
+  return `<span class="lb">${l}</span>: ${s.slice(0,k)}<span class="f">${s.slice(k)}</span>`}).join('\n');
+}
+function sheet(){
+ const info=document.getElementById('sinfo'),tb=document.getElementById('tbl');
+ const nc=S?S.ncols:0;let h='<thead><tr><th>#</th>';
+ for(let c=0;c<MAXC;c++){
+  if(c>=nc){h+='<th></th>';continue}
+  const num=S.num.includes(c);
+  h+=`<th>${esc(S.names[c])}`+(num?`<button class="vb" data-c="${c}" data-a="x" aria-pressed="${S.xc===c}" aria-label="${esc(S.names[c])}를 X로">X</button><button class="vb" data-c="${c}" data-a="y" aria-pressed="${S.yc===c}" aria-label="${esc(S.names[c])}를 Y로">Y</button>`:'')+'</th>';
+ }
+ h+='</tr></thead><tbody>';
+ const rows=S?S.rows.slice(0,MAXR):[[],[],[],[],[]];
+ rows.forEach((r,i)=>{
+  h+=`<tr><td>${S?i+1:i+1}</td>`;
+  for(let c=0;c<MAXC;c++)h+=`<td${S&&(c===S.xc||c===S.yc)?' class="cs"':''}>${esc(r[c]??'')}</td>`;
+  h+='</tr>';
+ });
+ tb.innerHTML=h+'</tbody>';
+ if(!S){info.textContent='불러온 파일이 없습니다';return}
+ const f=S.f,kb=f.size<1024?`${f.size} B`:`${(f.size/1024).toFixed(1)} KB`;
+ info.textContent=`${f.name} · ${kb} · ${S.rows.length}행 · ${nc}열`+(S.rows.length>MAXR?` (앞의 ${MAXR}행만 표시)`:'');
+}
+const msg=document.getElementById('msg');
+const say=(t,e)=>{msg.textContent=t;msg.className=e?'err':''};
+function parse(text){
+ const tk=text.split(/\r?\n/).map(l=>l.trim()).filter(Boolean).map(l=>l.split(/[\s,;]+/).filter(Boolean));
+ let hdr=null,start=0;
+ if(tk.length&&tk[0].some(t=>!isFinite(Number(t)))){hdr=tk[0];start=1}
+ const rows=[];let skipped=0;
+ for(const t of tk.slice(start)){if(t.some(x=>isFinite(Number(x))))rows.push(t.slice(0,MAXC));else skipped++}
+ const ncols=Math.min(MAXC,Math.max(hdr?hdr.length:0,...rows.map(r=>r.length),0));
+ const names=Array.from({length:ncols},(_,i)=>(hdr&&hdr[i])||`V${i+1}`);
+ const num=[];
+ for(let c=0;c<ncols;c++)if(rows.filter(r=>isFinite(Number(r[c]))&&r[c]!==undefined).length>=2)num.push(c);
+ return{rows,names,ncols,num,skipped,hasHdr:!!hdr};
+}
+function points(){
+ return S.rows.map(r=>[Number(r[S.xc]),Number(r[S.yc])]).filter((p,i)=>S.rows[i][S.xc]!==undefined&&S.rows[i][S.yc]!==undefined&&isFinite(p[0])&&isFinite(p[1]));
+}
+function render(){
+ const pts=points(),st=pts.length>1?stats(pts):null;
+ let ln=null,eq='';
+ if(reg){
+  if(st&&st[2]>0){
+   const a=st[4]*st[3]/st[2],b=st[1]-a*st[0],xs=pts.map(p=>p[0]);
+   let x0=xs[0],x1=xs[0];for(const v of xs){if(v<x0)x0=v;if(v>x1)x1=v}
+   ln={a,b,x0,x1};
+   eq=`<span class="sw"></span>Y = ${a.toFixed(4)}x ${b<0?'-':'+'} ${Math.abs(b).toFixed(4)}`;
+  }else eq='회귀식을 계산할 수 없습니다 (X 값이 모두 같거나 점이 부족함)';
+ }
+ plot(pts,S.names[S.xc],S.names[S.yc],ln);showStats(st);sheet();
+ document.getElementById('eq').innerHTML=eq;
+ const rb=document.getElementById('reg');rb.disabled=false;rb.setAttribute('aria-pressed',reg);rb.textContent=reg?'회귀선 지우기':'회귀선 그리기';
+ say(`${S.names[S.xc]}(X) × ${S.names[S.yc]}(Y) — 점 ${pts.length}개`+(S.skipped?` · 숫자가 없는 ${S.skipped}줄은 건너뜀`:'')+(S.hasHdr?'':' · 변수명이 없어 V1~로 표시'));
+}
+async function load(f){
+ if(!f)return;
+ if(!/\.txt$/i.test(f.name)){say('현재는 .txt 파일만 불러올 수 있습니다.',true);return}
+ try{
+  const p=parse(await f.text());
+  if(p.num.length<2){say('숫자 값이 들어 있는 열이 2개 이상 필요합니다.',true);return}
+  S={...p,f,xc:p.num[0],yc:p.num[1]};
+  document.getElementById('name').textContent=f.name;
+  render();
+ }catch(e){say('파일을 읽지 못했습니다.',true)}
+}
+document.getElementById('tbl').addEventListener('click',e=>{
+ const b=e.target.closest('.vb');if(!b||!S)return;
+ const c=+b.dataset.c;
+ if(b.dataset.a==='x'){if(c===S.yc)S.yc=S.xc;S.xc=c}else{if(c===S.xc)S.xc=S.yc;S.yc=c}
+ render();
+});
+const input=document.getElementById('file'),stage=document.getElementById('stage');
+document.getElementById('open').onclick=()=>input.click();
+document.getElementById('reg').onclick=()=>{if(!S)return;reg=!reg;render()};
+input.onchange=()=>{load(input.files[0]);input.value=''};
+stage.ondragover=e=>{e.preventDefault();stage.classList.add('drag')};
+stage.ondragleave=()=>stage.classList.remove('drag');
+stage.ondrop=e=>{e.preventDefault();stage.classList.remove('drag');load(e.dataTransfer.files[0])};
+plot(null);showStats(null);sheet();
+</script>
+</body>
+</html>
